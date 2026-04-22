@@ -1,0 +1,10 @@
+{
+  "resource": "/complaints",
+  "path": "/complaints",
+  "httpMethod": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"customerId\":\"CUST-002\",\"channel\":\"chat\",\"message\":\"My account was locked after I shared my national ID number.\",\"containsSensitiveHint\":true}",
+  "isBase64Encoded": false
+}

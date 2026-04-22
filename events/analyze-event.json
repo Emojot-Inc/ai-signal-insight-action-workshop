@@ -1,0 +1,15 @@
+{
+  "version": "0",
+  "id": "11111111-1111-1111-1111-111111111111",
+  "detail-type": "complaint.submitted",
+  "source": "workshop.complaints",
+  "account": "123456789012",
+  "time": "2026-04-22T10:00:00Z",
+  "region": "us-east-1",
+  "resources": [],
+  "detail": {
+    "complaintId": "cmp-001",
+    "s3Bucket": "example-raw-complaints",
+    "s3Key": "raw/cmp-001.json"
+  }
+}

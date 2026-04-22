@@ -1,0 +1,16 @@
+{
+  "version": "0",
+  "id": "22222222-2222-2222-2222-222222222222",
+  "detail-type": "complaint.analyzed",
+  "source": "workshop.complaints",
+  "account": "123456789012",
+  "time": "2026-04-22T10:05:00Z",
+  "region": "us-east-1",
+  "resources": [],
+  "detail": {
+    "complaintId": "cmp-001",
+    "severity": "high",
+    "sentiment": "negative",
+    "recommendedAction": "escalate"
+  }
+}

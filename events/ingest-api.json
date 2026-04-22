@@ -1,0 +1,10 @@
+{
+  "resource": "/complaints",
+  "path": "/complaints",
+  "httpMethod": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"customerId\":\"CUST-001\",\"channel\":\"email\",\"message\":\"I was charged twice for my subscription this month.\"}",
+  "isBase64Encoded": false
+}

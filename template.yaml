@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: AI signal to insight to action workshop (initial scaffold)
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+    Tracing: Active
+    Environment:
+      Variables:
+        LOG_LEVEL: INFO
+
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+
+Resources:
+  ComplaintsApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+
+  ComplaintEventsBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: ai-workshop-bus
+
+  RawComplaintsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  InsightsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: complaintId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: complaintId
+          KeyType: HASH
+
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-ingest"
+      CodeUri: src/ingest/
+      Handler: app.lambda_handler
+      Description: Accepts complaint submissions, stores raw payloads, and emits event.
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref RawComplaintsBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - events:PutEvents
+              Resource: !GetAtt ComplaintEventsBus.Arn
+      Environment:
+        Variables:
+          RAW_BUCKET_NAME: !Ref RawComplaintsBucket
+          EVENTS_BUS_NAME: !Ref ComplaintEventsBus
+      Events:
+        SubmitComplaintApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ComplaintsApi
+            Path: /complaints
+            Method: post
+
+  AnalyzeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-analyze"
+      CodeUri: src/analyze/
+      Handler: app.lambda_handler
+      Description: Analyzes complaint using Bedrock, applies guardrails, and saves insights.
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref InsightsTable
+        - S3ReadPolicy:
+            BucketName: !Ref RawComplaintsBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - events:PutEvents
+              Resource: !GetAtt ComplaintEventsBus.Arn
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+      Environment:
+        Variables:
+          INSIGHTS_TABLE_NAME: !Ref InsightsTable
+          EVENTS_BUS_NAME: !Ref ComplaintEventsBus
+          BEDROCK_MODEL_ID: placeholder-model-id
+          BEDROCK_GUARDRAIL_ID: placeholder-guardrail-id
+          BEDROCK_GUARDRAIL_VERSION: DRAFT
+          USE_MOCK_BEDROCK: "true"
+          FORCE_BEDROCK_FAILURE: "false"
+          MOCK_INVALID_MODEL_OUTPUT: "false"
+          PROMPT_FILE: prompt.txt
+
+  ActionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-action"
+      CodeUri: src/action/
+      Handler: app.lambda_handler
+      Description: Simulates escalation action from analyzed insights.
+      Environment:
+        Variables:
+          ACTION_MODE: simulate
+          RULE_URGENCY_HIGH: "true"
+          RULE_NEGATIVE_COMPLIANCE: "true"
+          RULE_PII_AND_NOT_LOW: "true"
+
+  ComplaintSubmittedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-complaint-submitted"
+      EventBusName: !Ref ComplaintEventsBus
+      EventPattern:
+        source:
+          - emojot.workshop.complaints
+        detail-type:
+          - ComplaintReceived
+      Targets:
+        - Arn: !GetAtt AnalyzeFunction.Arn
+          Id: AnalyzeFunctionTarget
+
+  ComplaintAnalyzedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${AWS::StackName}-complaint-analyzed"
+      EventBusName: !Ref ComplaintEventsBus
+      EventPattern:
+        source:
+          - emojot.workshop.complaints
+        detail-type:
+          - ComplaintAnalyzed
+      Targets:
+        - Arn: !GetAtt ActionFunction.Arn
+          Id: ActionFunctionTarget
+
+  AllowEventBridgeInvokeAnalyze:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AnalyzeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ComplaintSubmittedRule.Arn
+
+  AllowEventBridgeInvokeAction:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ActionFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ComplaintAnalyzedRule.Arn
+
+Outputs:
+  ApiUrl:
+    Description: API endpoint URL for complaint submissions
+    Value: !Sub "https://${ComplaintsApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/complaints"
+
+  RawComplaintsBucketName:
+    Description: S3 bucket for raw complaint storage
+    Value: !Ref RawComplaintsBucket
+
+  InsightsTableName:
+    Description: DynamoDB table for structured insights
+    Value: !Ref InsightsTable
+
+  ComplaintEventsBusName:
+    Description: EventBridge bus for complaint lifecycle events
+    Value: !Ref ComplaintEventsBus
