@@ -94,23 +94,48 @@ aws logs tail /aws/lambda/<stack-name>-analyze --since 10m
 Look for:
 - `Analyze validation/parsing failure`
 
-## 6) Mock Mode Usage
+## 6) Bedrock Mode
 
 Default in template:
 - `USE_MOCK_BEDROCK=true`
 
-This enables deterministic model output without live Bedrock dependency.
+This enables deterministic model output without live Bedrock dependency for
+template-level defaults and local overrides.
+
+The checked-in `samconfig.toml` deploys with live Bedrock by default:
+
+```bash
+sam build
+sam deploy
+```
+
+Alternative profiles:
+
+```bash
+sam deploy --config-env mock
+sam deploy --config-env dev
+sam deploy --config-env failure
+sam deploy --config-env invalid
+```
+
+CloudFormation creates the workshop guardrail and publishes a version for the
+analyzer automatically. Bedrock model access still needs to be enabled in the
+target AWS account and region.
+
+If deploy fails during change set creation with
+`AWS::EarlyValidation::PropertyValidation`, check the Bedrock guardrail
+resource definition in `template.yaml`. A common cause is the guardrail `Name`
+exceeding the Bedrock limit of 50 characters.
 
 Failure simulation flags:
 - `FORCE_BEDROCK_FAILURE=true` forces Bedrock failure path.
 - `MOCK_INVALID_MODEL_OUTPUT=true` forces invalid model output path.
 
-Update analyze environment (example):
+Deploy using the failure profile (example):
 
 ```bash
-aws lambda update-function-configuration \
-  --function-name <stack-name>-analyze \
-  --environment "Variables={INSIGHTS_TABLE_NAME=<table>,EVENTS_BUS_NAME=ai-workshop-bus,BEDROCK_MODEL_ID=placeholder-model-id,BEDROCK_GUARDRAIL_ID=placeholder-guardrail-id,BEDROCK_GUARDRAIL_VERSION=DRAFT,USE_MOCK_BEDROCK=true,FORCE_BEDROCK_FAILURE=true,MOCK_INVALID_MODEL_OUTPUT=false,PROMPT_FILE=prompt.txt}"
+sam build
+sam deploy --config-env failure
 ```
 
 ## 7) No Action Triggered

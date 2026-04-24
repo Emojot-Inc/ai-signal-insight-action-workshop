@@ -201,6 +201,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# AWS SAM build artifacts
+.aws-sam/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

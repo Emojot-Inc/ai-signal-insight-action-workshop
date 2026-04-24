@@ -16,6 +16,34 @@ Parameters:
   StageName:
     Type: String
     Default: dev
+  BedrockModelId:
+    Type: String
+    Default: global.anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: Bedrock model or inference profile ID used by the analyze function.
+  UseMockBedrock:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Use deterministic mock analysis instead of invoking Bedrock.
+  ForceBedrockFailure:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Force the analyzer failure path for workshop demos and troubleshooting.
+  MockInvalidModelOutput:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Force invalid mock model output for validation-failure demos.
+
+Conditions:
+  CreateBedrockGuardrail: !Equals [!Ref UseMockBedrock, "false"]
 
 Resources:
   ComplaintsApi:
@@ -27,6 +55,46 @@ Resources:
     Type: AWS::Events::EventBus
     Properties:
       Name: ai-workshop-bus
+
+  WorkshopBedrockGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Condition: CreateBedrockGuardrail
+    Properties:
+      Name: !Sub "${AWS::StackName}-guardrail"
+      Description: Workshop guardrail for harmful content and basic PII handling.
+      BlockedInputMessaging: Request blocked by workshop guardrail due to policy checks.
+      BlockedOutputsMessaging: Response blocked by workshop guardrail due to policy checks.
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: HATE
+            InputStrength: MEDIUM
+            OutputStrength: MEDIUM
+          - Type: INSULTS
+            InputStrength: MEDIUM
+            OutputStrength: MEDIUM
+          - Type: VIOLENCE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: MISCONDUCT
+            InputStrength: MEDIUM
+            OutputStrength: MEDIUM
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - Type: NAME
+            Action: ANONYMIZE
+          - Type: EMAIL
+            Action: ANONYMIZE
+          - Type: PHONE
+            Action: ANONYMIZE
+          - Type: ADDRESS
+            Action: ANONYMIZE
+
+  WorkshopBedrockGuardrailVersion:
+    Type: AWS::Bedrock::GuardrailVersion
+    Condition: CreateBedrockGuardrail
+    Properties:
+      Description: Published workshop guardrail version for live Bedrock analysis.
+      GuardrailIdentifier: !GetAtt WorkshopBedrockGuardrail.GuardrailId
 
   RawComplaintsBucket:
     Type: AWS::S3::Bucket
@@ -84,6 +152,8 @@ Resources:
       Policies:
         - DynamoDBWritePolicy:
             TableName: !Ref InsightsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref InsightsTable
         - S3ReadPolicy:
             BucketName: !Ref RawComplaintsBucket
         - Statement:
@@ -94,17 +164,33 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-              Resource: "*"
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:*:*:inference-profile/*"
+            - !If
+              - CreateBedrockGuardrail
+              - Effect: Allow
+                Action:
+                  - bedrock:ApplyGuardrail
+                Resource: !GetAtt WorkshopBedrockGuardrail.GuardrailArn
+              - !Ref AWS::NoValue
       Environment:
         Variables:
           INSIGHTS_TABLE_NAME: !Ref InsightsTable
           EVENTS_BUS_NAME: !Ref ComplaintEventsBus
-          BEDROCK_MODEL_ID: placeholder-model-id
-          BEDROCK_GUARDRAIL_ID: placeholder-guardrail-id
-          BEDROCK_GUARDRAIL_VERSION: DRAFT
-          USE_MOCK_BEDROCK: "true"
-          FORCE_BEDROCK_FAILURE: "false"
-          MOCK_INVALID_MODEL_OUTPUT: "false"
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          BEDROCK_GUARDRAIL_ID: !If
+            - CreateBedrockGuardrail
+            - !GetAtt WorkshopBedrockGuardrailVersion.GuardrailId
+            - ""
+          BEDROCK_GUARDRAIL_VERSION: !If
+            - CreateBedrockGuardrail
+            - !GetAtt WorkshopBedrockGuardrailVersion.Version
+            - ""
+          BEDROCK_REGION: !Ref AWS::Region
+          USE_MOCK_BEDROCK: !Ref UseMockBedrock
+          FORCE_BEDROCK_FAILURE: !Ref ForceBedrockFailure
+          MOCK_INVALID_MODEL_OUTPUT: !Ref MockInvalidModelOutput
           PROMPT_FILE: prompt.txt
 
   ActionFunction:
@@ -181,3 +267,17 @@ Outputs:
   ComplaintEventsBusName:
     Description: EventBridge bus for complaint lifecycle events
     Value: !Ref ComplaintEventsBus
+
+  BedrockGuardrailId:
+    Description: Stack-managed Bedrock guardrail ID for live analyzer deployments
+    Value: !If
+      - CreateBedrockGuardrail
+      - !GetAtt WorkshopBedrockGuardrailVersion.GuardrailId
+      - ""
+
+  BedrockGuardrailVersion:
+    Description: Stack-managed Bedrock guardrail version for live analyzer deployments
+    Value: !If
+      - CreateBedrockGuardrail
+      - !GetAtt WorkshopBedrockGuardrailVersion.Version
+      - ""

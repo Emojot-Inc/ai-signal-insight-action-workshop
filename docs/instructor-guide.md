@@ -20,6 +20,33 @@ sam build
 sam deploy --guided
 ```
 
+For subsequent deployments, the default SAM config uses live Bedrock with the
+stack-managed guardrail:
+
+```bash
+sam build
+sam deploy
+```
+
+For deterministic workshop runs without live Bedrock:
+
+```bash
+sam build
+sam deploy --config-env mock
+```
+
+For failure-mode walkthroughs without manual Lambda env edits:
+
+```bash
+sam build
+sam deploy --config-env failure
+sam deploy --config-env invalid
+```
+
+Before a live Bedrock session, make sure Claude Haiku 4.5 model access is
+enabled in the Bedrock console for the same AWS account and region. The live
+stack now creates and versions the workshop guardrail automatically.
+
 Capture outputs:
 
 ```bash
@@ -164,17 +191,13 @@ Concept to explain: boundary validation as the first reliability control.
 Force Bedrock failure in deployed env:
 
 ```bash
-aws lambda update-function-configuration \
-  --function-name <stack-name>-analyze \
-  --environment "Variables={INSIGHTS_TABLE_NAME=<table>,EVENTS_BUS_NAME=ai-workshop-bus,BEDROCK_MODEL_ID=placeholder-model-id,BEDROCK_GUARDRAIL_ID=placeholder-guardrail-id,BEDROCK_GUARDRAIL_VERSION=DRAFT,USE_MOCK_BEDROCK=true,FORCE_BEDROCK_FAILURE=true,MOCK_INVALID_MODEL_OUTPUT=false,PROMPT_FILE=prompt.txt}"
+sam deploy --config-env failure
 ```
 
 Invalid model-output simulation:
 
 ```bash
-aws lambda update-function-configuration \
-  --function-name <stack-name>-analyze \
-  --environment "Variables={INSIGHTS_TABLE_NAME=<table>,EVENTS_BUS_NAME=ai-workshop-bus,BEDROCK_MODEL_ID=placeholder-model-id,BEDROCK_GUARDRAIL_ID=placeholder-guardrail-id,BEDROCK_GUARDRAIL_VERSION=DRAFT,USE_MOCK_BEDROCK=true,FORCE_BEDROCK_FAILURE=false,MOCK_INVALID_MODEL_OUTPUT=true,PROMPT_FILE=prompt.txt}"
+sam deploy --config-env invalid
 ```
 
 Fallback note:

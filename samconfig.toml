@@ -1,0 +1,59 @@
+version = 0.1
+
+[default.global.parameters]
+region = "us-east-1"
+
+[default.deploy.parameters]
+stack_name = "ai-signal-insight-action-workshop"
+resolve_s3 = true
+s3_prefix = "ai-signal-insight-action-workshop"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = "StageName=\"v1\" UseMockBedrock=\"false\" BedrockModelId=\"global.anthropic.claude-haiku-4-5-20251001-v1:0\" ForceBedrockFailure=\"false\" MockInvalidModelOutput=\"false\""
+image_repositories = []
+
+[mock.deploy.parameters]
+stack_name = "ai-signal-insight-action-workshop"
+resolve_s3 = true
+s3_prefix = "ai-signal-insight-action-workshop"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = "StageName=\"v1\" UseMockBedrock=\"true\" BedrockModelId=\"global.anthropic.claude-haiku-4-5-20251001-v1:0\" ForceBedrockFailure=\"false\" MockInvalidModelOutput=\"false\""
+image_repositories = []
+
+[dev.deploy.parameters]
+stack_name = "ai-signal-insight-action-workshop-dev"
+resolve_s3 = true
+s3_prefix = "ai-signal-insight-action-workshop-dev"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = "StageName=\"dev\" UseMockBedrock=\"true\" BedrockModelId=\"global.anthropic.claude-haiku-4-5-20251001-v1:0\" ForceBedrockFailure=\"false\" MockInvalidModelOutput=\"false\""
+image_repositories = []
+
+[failure.deploy.parameters]
+stack_name = "ai-signal-insight-action-workshop"
+resolve_s3 = true
+s3_prefix = "ai-signal-insight-action-workshop"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = "StageName=\"v1\" UseMockBedrock=\"true\" BedrockModelId=\"global.anthropic.claude-haiku-4-5-20251001-v1:0\" ForceBedrockFailure=\"true\" MockInvalidModelOutput=\"false\""
+image_repositories = []
+
+[invalid.deploy.parameters]
+stack_name = "ai-signal-insight-action-workshop"
+resolve_s3 = true
+s3_prefix = "ai-signal-insight-action-workshop"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = "StageName=\"v1\" UseMockBedrock=\"true\" BedrockModelId=\"global.anthropic.claude-haiku-4-5-20251001-v1:0\" ForceBedrockFailure=\"false\" MockInvalidModelOutput=\"true\""
+image_repositories = []

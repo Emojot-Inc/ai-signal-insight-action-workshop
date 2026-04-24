@@ -70,3 +70,19 @@ Subsequent deployments:
 sam build
 sam deploy
 ```
+
+## Bedrock Configuration
+
+- Default deployments use live Bedrock through `samconfig.toml`:
+  - `UseMockBedrock=false`
+  - `BedrockModelId=global.anthropic.claude-haiku-4-5-20251001-v1:0`
+- Additional deploy profiles are available:
+  - `sam deploy --config-env mock` for deterministic mock analysis
+  - `sam deploy --config-env dev` for a separate dev stack in mock mode
+  - `sam deploy --config-env failure` for the forced analyzer failure demo
+  - `sam deploy --config-env invalid` for invalid mock model-output demo
+- In the default deployed configuration, the stack provisions a Bedrock guardrail and publishes a
+  version, then wires the created guardrail ID/version into `AnalyzeFunction`.
+- Before testing live analysis, enable access to Claude Haiku 4.5 in the Amazon
+  Bedrock console for the same AWS account and region used by SAM. Model access
+  remains an account-level prerequisite outside CloudFormation.
