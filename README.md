@@ -31,6 +31,8 @@ POST /complaints
   -> simulated escalation decision
 ```
 
+![Overall deployment architecture](docs/architecture/overall-deployment-white-background.drawio.png)
+
 ## Repository Map
 
 ```text
