@@ -25,6 +25,7 @@ POST /complaints
   -> S3 raw complaint record
   -> EventBridge: ComplaintReceived
   -> AnalyzeFunction
+  -> Amazon Bedrock analysis (guardrails in live mode)
   -> DynamoDB insights record
   -> EventBridge: ComplaintAnalyzed
   -> ActionFunction
