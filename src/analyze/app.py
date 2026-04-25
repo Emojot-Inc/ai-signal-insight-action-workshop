@@ -101,37 +101,92 @@ def analyze_with_mock(message: str) -> dict:
 def analyze_with_bedrock_converse(message: str) -> dict:
     model_id = get_bedrock_model_id()
     system_prompt = read_system_prompt()
-    converse_request = build_converse_request(model_id, system_prompt, message)
-    guardrail_configured = "guardrailConfig" in converse_request
+    last_error = None
 
-    log(
-        "INFO",
-        "Calling Bedrock Converse",
-        modelProvider="bedrock",
-        modelId=model_id,
-        guardrailConfigured=guardrail_configured,
-    )
+    for attempt in range(1, 3):
+        attempt_message = message
+        if attempt == 2:
+            attempt_message = (
+                f"{message}\n\n"
+                "Your previous response was invalid for parsing. "
+                "Return exactly one valid JSON object with the required fields only. "
+                "Do not include markdown, comments, or surrounding text."
+            )
 
-    response = get_bedrock_runtime_client().converse(**converse_request)
-    metadata = extract_guardrail_metadata(response, guardrail_configured)
+        converse_request = build_converse_request(model_id, system_prompt, attempt_message)
+        guardrail_configured = "guardrailConfig" in converse_request
 
-    log(
-        "INFO",
-        "Bedrock Converse response received",
-        modelProvider="bedrock",
-        modelId=model_id,
-        stopReason=metadata.get("bedrockStopReason"),
-        guardrailStatus=metadata["guardrailStatus"],
-        guardrailTracePresent=metadata["guardrailTracePresent"],
-        latencyMs=response.get("metrics", {}).get("latencyMs"),
-        inputTokens=response.get("usage", {}).get("inputTokens"),
-        outputTokens=response.get("usage", {}).get("outputTokens"),
-    )
+        log(
+            "INFO",
+            "Calling Bedrock Converse",
+            modelProvider="bedrock",
+            modelId=model_id,
+            guardrailConfigured=guardrail_configured,
+            attempt=attempt,
+        )
 
-    response_text = extract_converse_text(response)
-    parsed_output = parse_model_json(response_text)
-    validated = validate_analysis_schema(parsed_output)
-    return {**validated, **metadata}
+        response = get_bedrock_runtime_client().converse(**converse_request)
+        metadata = extract_guardrail_metadata(response, guardrail_configured)
+
+        log(
+            "INFO",
+            "Bedrock Converse response received",
+            modelProvider="bedrock",
+            modelId=model_id,
+            attempt=attempt,
+            stopReason=metadata.get("bedrockStopReason"),
+            guardrailStatus=metadata["guardrailStatus"],
+            guardrailTracePresent=metadata["guardrailTracePresent"],
+            latencyMs=response.get("metrics", {}).get("latencyMs"),
+            inputTokens=response.get("usage", {}).get("inputTokens"),
+            outputTokens=response.get("usage", {}).get("outputTokens"),
+        )
+
+        try:
+            response_text = extract_converse_text(response)
+        except ValueError as exc:
+            if metadata["guardrailStatus"] == "INTERVENED":
+                log(
+                    "INFO",
+                    "Synthesizing analysis after Bedrock guardrail intervention without text output",
+                    modelProvider="bedrock",
+                    modelId=model_id,
+                    attempt=attempt,
+                    error=str(exc),
+                )
+                fallback = build_guardrail_intervention_analysis(message)
+                return {**fallback, **metadata}
+            raise
+
+        try:
+            parsed_output = parse_model_json(response_text)
+            validated = validate_analysis_schema(parsed_output)
+            return {**validated, **metadata}
+        except ValueError as exc:
+            if metadata["guardrailStatus"] == "INTERVENED":
+                log(
+                    "INFO",
+                    "Synthesizing analysis after Bedrock guardrail intervention with non-schema output",
+                    modelProvider="bedrock",
+                    modelId=model_id,
+                    attempt=attempt,
+                    error=str(exc),
+                    responseLength=len(response_text),
+                )
+                fallback = build_guardrail_intervention_analysis(message)
+                return {**fallback, **metadata}
+            last_error = exc
+            log(
+                "WARNING",
+                "Bedrock response failed JSON/schema validation",
+                modelProvider="bedrock",
+                modelId=model_id,
+                attempt=attempt,
+                error=str(exc),
+                responseLength=len(response_text),
+            )
+
+    raise last_error
 
 
 def get_bedrock_runtime_client():
@@ -307,6 +362,13 @@ def build_mock_model_output(message, guardrail_status):
         }
 
     return json.dumps(output)
+
+
+def build_guardrail_intervention_analysis(message: str) -> dict:
+    guardrail_status = infer_mock_guardrail_status(message)
+    model_output = build_mock_model_output(message, guardrail_status)
+    parsed_output = parse_model_json(model_output)
+    return validate_analysis_schema(parsed_output)
 
 
 def parse_model_json(text: str) -> dict:

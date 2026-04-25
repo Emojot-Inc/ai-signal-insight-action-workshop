@@ -1,76 +1,90 @@
 # Instructor Guide
 
-## Session Order (4 hours)
+This guide is the runbook for facilitators leading the workshop.
 
-1. Framing and architecture
-2. Ingest demo and hands-on requests
-3. Analysis path and Bedrock output
-4. Guardrails and compliance
-5. Action routing
-6. Failure handling and observability
-7. Guided tuning and assessment
-8. Platform engineering wrap-up
+## Session Outcomes
 
-## Pre-Session Commands
+By the end of the session, participants should understand:
 
-Run once before participants join:
+- how the API, EventBridge, S3, DynamoDB, and Lambda pieces connect
+- why the workflow is split into ingest, analyze, and action stages
+- how mock AI output differs from live Bedrock analysis
+- how guardrails and validation affect downstream behavior
 
-```bash
-sam build
-sam deploy --guided
-```
+## Recommended Delivery Mode
 
-For subsequent deployments, the default SAM config uses live Bedrock with the
-stack-managed guardrail:
+Use one of these two approaches:
 
-```bash
-sam build
-sam deploy
-```
+- `mock` profile for repeatable demos and hands-on labs
+- `default` profile for a live Bedrock walkthrough after the basics are stable
 
-For deterministic workshop runs without live Bedrock:
+If time is tight, run most of the session in mock mode and reserve live Bedrock for a short compare-and-contrast demo.
+
+## Pre-Session Checklist
+
+Run these before participants join:
 
 ```bash
 sam build
 sam deploy --config-env mock
 ```
 
-For failure-mode walkthroughs without manual Lambda env edits:
+If you plan to show live Bedrock as well:
 
 ```bash
 sam build
-sam deploy --config-env failure
-sam deploy --config-env invalid
+sam deploy
 ```
 
-Before a live Bedrock session, make sure Claude Haiku 4.5 model access is
-enabled in the Bedrock console for the same AWS account and region. The live
-stack now creates and versions the workshop guardrail automatically.
+Also verify:
 
-Capture outputs:
+- Docker is running if you will show `sam local`
+- the target AWS account can access Bedrock in `us-east-1`
+- Claude Haiku 4.5 access is enabled in Bedrock for the target account
+- you know the deployed stack name you plan to use on screen
+
+## Capture Useful Outputs
+
+List outputs:
 
 ```bash
 aws cloudformation describe-stacks \
-  --stack-name <stack-name> \
+  --stack-name ai-signal-insight-action-workshop \
   --query "Stacks[0].Outputs[].[OutputKey,OutputValue]" \
   --output table
 ```
 
-Set API URL for live calls:
+Set a working API URL:
 
 ```bash
-API_URL=$(aws cloudformation describe-stacks \
-  --stack-name <stack-name> \
-  --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
-  --output text)
+API_URL="<your-api-endpoint>"
 echo "$API_URL"
 ```
 
-## Deterministic Demo Sequence
+Keep these handy as well:
 
-### Sequence 1: Normal Complaint
+- `RawComplaintsBucketName`
+- `InsightsTableName`
+- `ComplaintEventsBusName`
+- `BedrockGuardrailId`
+- `BedrockGuardrailVersion`
 
-What to say: "First we run the happy path to establish baseline flow."
+## Suggested Session Order
+
+1. explain the architecture and responsibilities of each function
+2. show the happy path end to end
+3. show harmful content and PII examples
+4. compare mock-mode behavior with live guardrail behavior
+5. inspect logs and DynamoDB records
+6. show one failure-mode deployment profile
+7. wrap with cost, cleanup, and extension ideas
+
+## Demo Sequence
+
+### Sequence 1: Normal Service Issue
+
+What to say:
+"First we run the happy path so everyone sees the baseline event flow."
 
 What to run:
 
@@ -78,20 +92,19 @@ What to run:
 curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-001",
+    "complaintId":"cmp-demo-101",
     "channel":"email",
-    "message":"I was billed twice this month.",
-    "customerName":"Taylor"
+    "message":"Your support team ignored my issue for three days and I still cannot access my account."
   }'
 ```
 
-Expected output:
+Expected result:
 
 ```json
-{"status":"accepted","complaintId":"cmp-demo-001"}
+{"status":"accepted","complaintId":"cmp-demo-101"}
 ```
 
-What screen to show:
+What to show:
 
 ```bash
 aws logs tail /aws/lambda/<stack-name>-ingest --since 5m --follow
@@ -99,11 +112,13 @@ aws logs tail /aws/lambda/<stack-name>-analyze --since 5m --follow
 aws logs tail /aws/lambda/<stack-name>-action --since 5m --follow
 ```
 
-Concept to explain: event-driven chaining (`ComplaintReceived` -> analyze -> `ComplaintAnalyzed` -> action).
+Key teaching point:
+`ComplaintReceived` leads to analysis, then `ComplaintAnalyzed` leads to action.
 
-### Sequence 2: Abusive Complaint
+### Sequence 2: Harmful Content
 
-What to say: "Now we show guardrail intervention logic using mock mode."
+What to say:
+"Now we send content that should trigger the harmful-content path while still keeping the workflow observable."
 
 What to run:
 
@@ -111,31 +126,27 @@ What to run:
 curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-002",
+    "complaintId":"cmp-demo-102",
     "channel":"chat",
-    "message":"Your agent is stupid and I hate this service."
+    "message":"I hate your agent. I will kill you."
   }'
 ```
 
-Expected output:
-
-```json
-{"status":"accepted","complaintId":"cmp-demo-002"}
-```
-
-What screen to show:
+What to show:
 
 ```bash
 aws dynamodb get-item \
   --table-name <InsightsTableName-from-stack-output> \
-  --key '{"complaintId":{"S":"cmp-demo-002"}}'
+  --key '{"complaintId":{"S":"cmp-demo-102"}}'
 ```
 
-Concept to explain: `guardrailStatus` is persisted and can drive policy decisions.
+Key teaching point:
+`guardrailStatus` is persisted and becomes policy input for downstream actioning.
 
-### Sequence 3: PII-Heavy Complaint
+### Sequence 3: Harmful Content Plus PII
 
-What to say: "Same flow, but with sensitive-information risk."
+What to say:
+"This one combines abuse with sensitive personal-document references."
 
 What to run:
 
@@ -143,25 +154,101 @@ What to run:
 curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-003",
+    "complaintId":"cmp-demo-103",
     "channel":"web",
-    "message":"My passport and national ID details were posted publicly."
+    "message":"Your idiot staff leaked my passport number and national ID. I will kill him."
   }'
 ```
 
-Expected output:
+What to show:
 
-```json
-{"status":"accepted","complaintId":"cmp-demo-003"}
+- the analyze log line with `guardrailStatus`
+- the DynamoDB item with `piiDetected=true`
+
+Key teaching point:
+guardrail-aware normalization can still produce structured output for downstream systems.
+
+### Sequence 4: PII-Heavy Complaint
+
+What to say:
+"This complaint is sensitive without being overtly threatening."
+
+What to run:
+
+```bash
+curl -s -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "complaintId":"cmp-demo-104",
+    "channel":"web",
+    "message":"My passport number and credit card details were visible in the complaint thread."
+  }'
 ```
 
-What screen to show: analyze log line containing `guardrailStatus` and emitted `ComplaintAnalyzed` detail including `piiDetected`.
+What to show:
 
-Concept to explain: policy-aware enrichment before downstream action.
+- analyze log output
+- `piiDetected=true`
+- `category=compliance`
 
-### Sequence 4: Invalid Complaint
+Key teaching point:
+PII handling is not the same thing as harmful-language detection.
 
-What to say: "Validation should fail fast at ingest and avoid downstream noise."
+### Sequence 5: Sensitive But Still Analyzable
+
+What to say:
+"Not every risky complaint is blocked. Some are still analyzed and routed normally."
+
+What to run:
+
+```bash
+curl -s -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "complaintId":"cmp-demo-105",
+    "channel":"web",
+    "message":"My personal identification documents were exposed on your website and other users could view them."
+  }'
+```
+
+What to show:
+
+- the item with `guardrailStatus=APPLIED` in live mode
+- the recommended action
+
+Key teaching point:
+guardrails can annotate and moderate without always halting the business workflow.
+
+### Sequence 6: Boundary-Crossing Message With PII
+
+What to say:
+"This example is softer in tone but still creates a compliance workflow because it includes personal contact details."
+
+What to run:
+
+```bash
+curl -s -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "complaintId":"cmp-demo-106",
+    "channel":"web",
+    "message":"I really like one of your support agents, please ask her to call me at 202-555-0147."
+  }'
+```
+
+What to show:
+
+- `piiDetected=true`
+- the normalized recommendation
+- the action-stage decision reasons
+
+Key teaching point:
+the workflow is about operational signal extraction, not just negative sentiment.
+
+### Sequence 7: Invalid Complaint
+
+What to say:
+"Validation should fail at the front door and avoid downstream noise."
 
 What to run:
 
@@ -169,12 +256,12 @@ What to run:
 curl -s -i -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-004",
+    "complaintId":"cmp-demo-199",
     "channel":"email"
   }'
 ```
 
-Expected output:
+Expected result:
 
 ```text
 HTTP/1.1 400 Bad Request
@@ -182,27 +269,57 @@ HTTP/1.1 400 Bad Request
 {"error":"'message' is required and must be a non-empty string"}
 ```
 
-What screen to show: ingest log with `level=WARNING` and validation error.
+Key teaching point:
+ingest validation protects downstream systems from malformed requests.
 
-Concept to explain: boundary validation as the first reliability control.
+## Failure-Mode Demos
 
-## Failure Mode Walkthrough
-
-Force Bedrock failure in deployed env:
+Use these when you want to show controlled failure paths:
 
 ```bash
+sam build
 sam deploy --config-env failure
-```
-
-Invalid model-output simulation:
-
-```bash
 sam deploy --config-env invalid
 ```
 
-Fallback note:
-- If live AWS calls are slow, switch to local demo with:
-```bash
-sam build
-sam local start-api
-```
+What each profile demonstrates:
+
+- `failure`: forced runtime failure before Bedrock output is produced
+- `invalid`: invalid AI output that fails JSON/schema validation
+
+Comparison table:
+
+| Scenario | Where it fails | API response | S3 raw complaint | DynamoDB insight | EventBridge downstream | Action stage | What you would see |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Invalid request | Ingest validation | `400 Bad Request` | No | No | No `ComplaintReceived` event | No | Clear validation error returned to caller |
+| Ingest infrastructure failure | Ingest after validation | `500 Failed to process complaint` | Maybe | No | No downstream progress if store or publish fails | No | Ingest logs show `Ingest processing failed` with `errorType` |
+| Forced analyzer failure | Analyze runtime | `202 Accepted` already returned | Yes | No | `ComplaintReceived` exists, `ComplaintAnalyzed` does not | No | Analyze logs show an unexpected failure |
+| Invalid AI output | Analyze validation/parsing | `202 Accepted` already returned | Yes | No | `ComplaintReceived` exists, `ComplaintAnalyzed` does not | No | Analyze logs show validation or parsing failure |
+| Guardrail intervention | Analyze, but recovered | `202 Accepted` already returned | Yes | Yes | Both events emitted | Yes | Insight is saved with guardrail metadata |
+| Duplicate complaint replay | Analyze dedupe check | `202 Accepted` at ingest | Yes | Existing item reused | Analyze skips duplicate completion | No new action | Logs show duplicate skip behavior |
+
+Suggested framing:
+
+- show that the analyzer logs structured failure details
+- show that invalid output does not get silently persisted
+- connect this back to production hardening and observability
+
+## Instructor Tips
+
+- use fresh `complaintId` values if you are repeating the same demo and want to avoid duplicate-skip behavior
+- keep one terminal dedicated to log tails and one for `curl`
+- if live Bedrock adds latency, call that out explicitly so participants do not think the app is stuck
+- if a live Bedrock demo is flaky, switch back to `mock` and keep momentum
+
+## Wrap-Up Points
+
+- the infrastructure is intentionally simple so participants can reason about it quickly
+- the analyzer validates AI output before trusting it
+- the action stage is simulated on purpose and is a natural extension point
+- most workshop cost comes from Bedrock, not the surrounding serverless components
+
+## Supporting Docs
+
+- participant flow: [participant-guide.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/participant-guide.md)
+- common issues: [troubleshooting.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/troubleshooting.md)
+- cost and cleanup: [costing.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/costing.md)

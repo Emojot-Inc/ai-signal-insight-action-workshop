@@ -1,49 +1,90 @@
 # Troubleshooting
 
-## 1) `sam` Commands Fail
+This guide covers the most common issues workshop users run into when running locally or in AWS.
+
+## 1. `sam` command not found
 
 Symptom:
-- `zsh: command not found: sam`
+
+```text
+zsh: command not found: sam
+```
+
+What it means:
+
+- AWS SAM CLI is not installed or is not on your shell path
 
 Fix:
-1. Install AWS SAM CLI.
-2. Verify:
 
 ```bash
 sam --version
 ```
 
-## 2) `sam validate` Shows Metadata Permission Warnings
+If that still fails, install or reinstall the SAM CLI and open a new shell.
+
+## 2. Docker is not running for local commands
 
 Symptom:
-- Warnings about writing `/Users/.../.aws-sam/metadata.json`
+
+- `sam local start-api` or `sam local invoke` fails before the Lambda container starts
+
+What it means:
+
+- Docker is required for local SAM execution
+
+Fix:
+
+```bash
+docker --version
+```
+
+Then start Docker Desktop or your local Docker runtime and try again.
+
+## 3. `sam build` or `sam local start-api` fails unexpectedly
+
+Quick checks:
+
+```bash
+python3 --version
+sam --version
+docker --version
+```
+
+Also confirm you are in the repo root that contains `template.yaml`.
+
+## 4. `sam validate` shows metadata permission warnings
+
+Symptom:
+
+- warnings about writing `.aws-sam/metadata.json`
 
 Impact:
-- Template validation can still succeed.
 
-Fix options:
-1. Ignore in restricted environments.
-2. Disable telemetry for current shell:
+- template validation can still succeed in restricted environments
+
+Optional workaround:
 
 ```bash
 export SAM_CLI_TELEMETRY=0
 sam validate
 ```
 
-## 3) Ingest Returns `400`
+## 5. `POST /complaints` returns `400`
 
-Symptom:
-- Response body:
+Typical response:
 
 ```json
 {"error":"'message' is required and must be a non-empty string"}
 ```
 
 Checks:
-1. Ensure request JSON contains `complaintId`, `channel`, `message`.
-2. Ensure all three are non-empty strings.
 
-Quick test:
+- request body must be a JSON object
+- `complaintId` must be a non-empty string
+- `channel` must be a non-empty string
+- `message` must be a non-empty string
+
+Known-good test:
 
 ```bash
 curl -s -X POST http://127.0.0.1:3000/complaints \
@@ -51,39 +92,41 @@ curl -s -X POST http://127.0.0.1:3000/complaints \
   -d '{"complaintId":"cmp-test-1","channel":"email","message":"test"}'
 ```
 
-## 4) Ingest Returns `500`
+## 6. `POST /complaints` returns `500`
 
-Symptom:
-- Response body:
+Typical response:
 
 ```json
 {"error":"Failed to process complaint"}
 ```
 
-Typical causes:
-1. S3 write failure.
-2. EventBridge `PutEvents` failure.
+Likely causes:
 
-Debug:
+- S3 write failure
+- EventBridge `PutEvents` failure
+- missing AWS permissions in a deployed environment
+
+Debug with ingest logs:
 
 ```bash
 aws logs tail /aws/lambda/<stack-name>-ingest --since 10m
 ```
 
-Look for fields:
+Look for fields such as:
+
 - `errorType`
 - `error`
 - `s3Bucket`
 - `s3Key`
 
-## 5) Analyze Fails Before Writing DynamoDB
+## 7. Analyze fails before writing DynamoDB
 
-Symptom:
-- Analyze Lambda errors with parsing/validation messages.
+Likely causes:
 
-Typical causes:
-1. Invalid model JSON.
-2. Schema mismatch (`sentiment`, `urgency`, `category`, word limits).
+- invalid or incomplete event detail
+- invalid AI output
+- schema mismatch in `sentiment`, `urgency`, `category`, `summary`, or `recommendedAction`
+- forced failure profile enabled
 
 Debug:
 
@@ -92,61 +135,58 @@ aws logs tail /aws/lambda/<stack-name>-analyze --since 10m
 ```
 
 Look for:
+
 - `Analyze validation/parsing failure`
+- `Analyze AWS dependency failure`
+- `Analyze unexpected failure`
 
-## 6) Bedrock Mode
-
-Default in template:
-- `USE_MOCK_BEDROCK=true`
-
-This enables deterministic model output without live Bedrock dependency for
-template-level defaults and local overrides.
-
-The checked-in `samconfig.toml` deploys with live Bedrock by default:
-
-```bash
-sam build
-sam deploy
-```
-
-Alternative profiles:
-
-```bash
-sam deploy --config-env mock
-sam deploy --config-env dev
-sam deploy --config-env failure
-sam deploy --config-env invalid
-```
-
-CloudFormation creates the workshop guardrail and publishes a version for the
-analyzer automatically. Bedrock model access still needs to be enabled in the
-target AWS account and region.
-
-If deploy fails during change set creation with
-`AWS::EarlyValidation::PropertyValidation`, check the Bedrock guardrail
-resource definition in `template.yaml`. A common cause is the guardrail `Name`
-exceeding the Bedrock limit of 50 characters.
-
-Failure simulation flags:
-- `FORCE_BEDROCK_FAILURE=true` forces Bedrock failure path.
-- `MOCK_INVALID_MODEL_OUTPUT=true` forces invalid model output path.
-
-Deploy using the failure profile (example):
-
-```bash
-sam build
-sam deploy --config-env failure
-```
-
-## 7) No Action Triggered
-
-Symptom:
-- Analyze succeeds, but action logs are missing.
+## 8. Bedrock live mode does not work
 
 Checks:
-1. Event bus is `ai-workshop-bus`.
-2. Analyze emits `detail-type` `ComplaintAnalyzed`.
-3. Action rule is deployed and enabled.
+
+- confirm you deployed with `UseMockBedrock="false"` or used the default profile
+- confirm Bedrock model access is enabled in the same AWS account and region
+- confirm the region matches the configured deployment region
+- confirm the stack outputs include a guardrail ID and guardrail version for live mode
+
+Helpful commands:
+
+```bash
+sam deploy
+aws cloudformation describe-stacks \
+  --stack-name ai-signal-insight-action-workshop \
+  --query "Stacks[0].Outputs[].[OutputKey,OutputValue]" \
+  --output table
+```
+
+Notes:
+
+- local template defaults use mock mode
+- the checked-in default deploy profile uses live Bedrock in `us-east-1`
+- the stack creates the workshop guardrail automatically for live deployments
+
+## 9. Sample `sam local invoke` events do not behave as expected
+
+Use the event files in `events/` that match the current handlers:
+
+- `events/ingest-api.json` for `IngestFunction`
+- `events/ingest-api-sensitive.json` for `IngestFunction`
+- `events/analyze-event.json` for `AnalyzeFunction`
+- `events/action-event.json` for `ActionFunction`
+
+Remember:
+
+- direct invoke tests one function only
+- it does not automatically trigger the full EventBridge chain
+
+## 10. No action log appears after analysis
+
+Checks:
+
+- confirm analyze completed successfully
+- confirm the event bus is `ai-workshop-bus`
+- confirm analyze emitted `ComplaintAnalyzed`
+- confirm the EventBridge rule is enabled
 
 Rule status check:
 
@@ -156,14 +196,15 @@ aws events describe-rule \
   --event-bus-name ai-workshop-bus
 ```
 
-## 8) DynamoDB Item Not Found
-
-Symptom:
-- Complaint accepted but no item in insights table.
+## 11. DynamoDB item is missing
 
 Checks:
-1. Confirm analyze succeeded in logs.
-2. Query exact `complaintId`:
+
+- confirm analyze succeeded in logs
+- query the exact `complaintId`
+- make sure you are checking the correct table name from stack outputs
+
+Example:
 
 ```bash
 aws dynamodb get-item \
@@ -171,8 +212,37 @@ aws dynamodb get-item \
   --key '{"complaintId":{"S":"<complaint-id>"}}'
 ```
 
-3. If missing, replay analyze locally:
+## 12. Duplicate complaint appears to be ignored
+
+This is expected after a successful completed write.
+
+The analyzer checks whether the same `complaintId` already exists with `processingStatus=COMPLETED` and skips duplicate work.
+
+Fix:
+
+- use a new `complaintId` for each repeated run
+
+## 13. Stack deletion fails because the S3 bucket is not empty
+
+CloudFormation cannot delete a non-empty bucket.
+
+Empty the bucket first:
 
 ```bash
-sam local invoke AnalyzeFunction --event events/analyze-event.json
+aws s3 rm s3://<RawComplaintsBucketName-from-stack-output> --recursive
+```
+
+Then delete the stack:
+
+```bash
+sam delete --stack-name ai-signal-insight-action-workshop
+```
+
+## 14. You need a faster fallback during the workshop
+
+If live Bedrock is slowing the session down or failing unexpectedly, switch back to deterministic mock mode:
+
+```bash
+sam build
+sam deploy --config-env mock
 ```
