@@ -186,7 +186,7 @@ sam deploy --config-env invalid
 
 ## Bedrock Notes
 
-- Local runs default to mock mode because `UseMockBedrock` defaults to `true` in [template.yaml](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/template.yaml).
+- Local runs default to mock mode because `UseMockBedrock` defaults to `true` in [template.yaml](template.yaml).
 - The checked-in default deploy profile uses live Bedrock in `us-east-1`.
 - Live Bedrock deployments create a workshop guardrail and guardrail version in the stack.
 - You still need model access enabled in Amazon Bedrock for the same account and region before live analysis will work.
@@ -202,10 +202,10 @@ The current default model ID is `global.anthropic.claude-haiku-4-5-20251001-v1:0
 
 ## Documentation Guide
 
-- Participant walkthrough: [docs/participant-guide.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/participant-guide.md)
-- Instructor runbook: [docs/instructor-guide.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/instructor-guide.md)
-- Troubleshooting: [docs/troubleshooting.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/troubleshooting.md)
-- Cost and cleanup notes: [docs/costing.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/costing.md)
+- Participant walkthrough: [docs/participant-guide.md](docs/participant-guide.md)
+- Instructor runbook: [docs/instructor-guide.md](docs/instructor-guide.md)
+- Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
+- Cost and cleanup notes: [docs/costing.md](docs/costing.md)
 
 ## Cleanup
 
@@ -215,4 +215,4 @@ When you are done, delete the workshop stack so costs stop accumulating:
 sam delete --stack-name ai-signal-insight-action-workshop
 ```
 
-If stack deletion is blocked by a non-empty bucket, use the cleanup steps in [docs/costing.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/costing.md).
+If stack deletion is blocked by a non-empty bucket, use the cleanup steps in [docs/costing.md](docs/costing.md).

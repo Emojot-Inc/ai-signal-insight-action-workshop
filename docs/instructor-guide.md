@@ -319,6 +319,6 @@ If the group asks how to try another Bedrock Converse-compatible model, explain 
 
 ## Supporting Docs
 
-- participant flow: [participant-guide.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/participant-guide.md)
-- common issues: [troubleshooting.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/troubleshooting.md)
-- cost and cleanup: [costing.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/costing.md)
+- participant flow: [participant-guide.md](participant-guide.md)
+- common issues: [troubleshooting.md](troubleshooting.md)
+- cost and cleanup: [costing.md](costing.md)

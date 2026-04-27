@@ -296,4 +296,4 @@ For another Bedrock Converse-compatible model, you do not need a separate adapte
 
 ## If Something Breaks
 
-Use [troubleshooting.md](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/docs/troubleshooting.md) for the most common workshop issues.
+Use [troubleshooting.md](docs/troubleshooting.md) for the most common workshop issues.

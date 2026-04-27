@@ -20,7 +20,7 @@ That is intentionally a rule-of-thumb number, not a billing guarantee.
 
 ## What Is in Scope
 
-The stack in [template.yaml](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/template.yaml) includes:
+The stack in [template.yaml](../template.yaml) includes:
 
 - API Gateway
 - four Lambda functions
