@@ -40,8 +40,6 @@ GET /complaints/{complaintId}
 
 ![Overall deployment architecture](docs/architecture/overall-deployment-white-background.drawio.png)
 
-The diagram highlights the main event-driven write path. The new query path is the `GET /complaints/{complaintId}` flow described in the text above.
-
 ## Repository Map
 
 ```text
