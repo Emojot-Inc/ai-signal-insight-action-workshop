@@ -80,7 +80,6 @@ Typical response:
 Checks:
 
 - request body must be a JSON object
-- `complaintId` must be a non-empty string
 - `channel` must be a non-empty string
 - `message` must be a non-empty string
 
@@ -89,7 +88,7 @@ Known-good test:
 ```bash
 curl -s -X POST http://127.0.0.1:3000/complaints \
   -H "Content-Type: application/json" \
-  -d '{"complaintId":"cmp-test-1","channel":"email","message":"test"}'
+  -d '{"channel":"email","message":"test"}'
 ```
 
 ## 6. `POST /complaints` returns `500`
@@ -103,6 +102,7 @@ Typical response:
 Likely causes:
 
 - S3 write failure
+- initial DynamoDB state write failure
 - EventBridge `PutEvents` failure
 - missing AWS permissions in a deployed environment
 
@@ -119,7 +119,7 @@ Look for fields such as:
 - `s3Bucket`
 - `s3Key`
 
-## 7. Analyze fails before writing DynamoDB
+## 7. Analyze fails before updating DynamoDB analysis fields
 
 Likely causes:
 
@@ -173,6 +173,7 @@ Use the event files in `events/` that match the current handlers:
 - `events/ingest-api-sensitive.json` for `IngestFunction`
 - `events/analyze-event.json` for `AnalyzeFunction`
 - `events/action-event.json` for `ActionFunction`
+- `events/query-api.json` for `QueryFunction`
 
 Remember:
 
@@ -196,11 +197,41 @@ aws events describe-rule \
   --event-bus-name ai-workshop-bus
 ```
 
-## 11. DynamoDB item is missing
+## 11. `GET /complaints/{complaintId}` returns `404`
 
 Checks:
 
-- confirm analyze succeeded in logs
+- confirm you copied the exact `complaintId` returned by the POST response
+- confirm ingest succeeded in logs
+- confirm you are calling the correct API base URL and path
+
+Example:
+
+```bash
+curl -s "<your-api-base-url>/complaints/<complaintId>"
+```
+
+## 12. Query response only shows partial status
+
+This is expected while the asynchronous workflow is still in progress.
+
+What it means:
+
+- `RECEIVED` means ingest accepted the complaint and stored the initial record
+- `ANALYZED` means analysis completed but action has not finished
+- `ACTIONED` means the simulated action outcome has been persisted
+
+Checks:
+
+- tail ingest, analyze, and action logs
+- retry the lookup after a short delay
+
+## 13. DynamoDB item is missing
+
+Checks:
+
+- confirm ingest succeeded in logs
+- if you expected analysis fields, confirm analyze succeeded in logs
 - query the exact `complaintId`
 - make sure you are checking the correct table name from stack outputs
 
@@ -212,17 +243,7 @@ aws dynamodb get-item \
   --key '{"complaintId":{"S":"<complaint-id>"}}'
 ```
 
-## 12. Duplicate complaint appears to be ignored
-
-This is expected after a successful completed write.
-
-The analyzer checks whether the same `complaintId` already exists with `processingStatus=COMPLETED` and skips duplicate work.
-
-Fix:
-
-- use a new `complaintId` for each repeated run
-
-## 13. Stack deletion fails because the S3 bucket is not empty
+## 14. Stack deletion fails because the S3 bucket is not empty
 
 CloudFormation cannot delete a non-empty bucket.
 
@@ -238,7 +259,7 @@ Then delete the stack:
 sam delete --stack-name ai-signal-insight-action-workshop
 ```
 
-## 14. You need a faster fallback during the workshop
+## 15. You need a faster fallback during the workshop
 
 If live Bedrock is slowing the session down or failing unexpectedly, switch back to deterministic mock mode:
 

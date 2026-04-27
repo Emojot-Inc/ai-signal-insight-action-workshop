@@ -5,6 +5,7 @@ Prepare a deterministic sequence:
 - abusive complaint
 - PII-heavy complaint
 - invalid complaint
+- complaint query by returned complaint ID
 
 For each sequence include:
 - what to say

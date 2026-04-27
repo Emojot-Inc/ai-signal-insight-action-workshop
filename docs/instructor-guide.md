@@ -57,12 +57,15 @@ aws cloudformation describe-stacks \
 Set a working API URL:
 
 ```bash
-API_URL="<your-api-endpoint>"
-echo "$API_URL"
+API_BASE_URL="<your-api-base-url>"
+POST_API_URL="$API_BASE_URL/complaints"
+echo "$API_BASE_URL"
 ```
 
 Keep these handy as well:
 
+- `ApiBaseUrl`
+- `ApiUrl`
 - `RawComplaintsBucketName`
 - `InsightsTableName`
 - `ComplaintEventsBusName`
@@ -75,7 +78,7 @@ Keep these handy as well:
 2. show the happy path end to end
 3. show harmful content and PII examples
 4. compare mock-mode behavior with live guardrail behavior
-5. inspect logs and DynamoDB records
+5. inspect logs and query complaint status by ID
 6. show one failure-mode deployment profile
 7. wrap with cost, cleanup, and extension ideas
 
@@ -89,10 +92,9 @@ What to say:
 What to run:
 
 ```bash
-curl -s -X POST "$API_URL" \
+curl -s -X POST "$POST_API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-101",
     "channel":"email",
     "message":"Your support team ignored my issue for three days and I still cannot access my account."
   }'
@@ -101,7 +103,7 @@ curl -s -X POST "$API_URL" \
 Expected result:
 
 ```json
-{"status":"accepted","complaintId":"cmp-demo-101"}
+{"status":"accepted","complaintId":"cmp-<uuid-v4>"}
 ```
 
 What to show:
@@ -114,6 +116,7 @@ aws logs tail /aws/lambda/<stack-name>-action --since 5m --follow
 
 Key teaching point:
 `ComplaintReceived` leads to analysis, then `ComplaintAnalyzed` leads to action.
+The participant receives a generated ID and uses it to query the complaint later.
 
 ### Sequence 2: Harmful Content
 
@@ -123,10 +126,9 @@ What to say:
 What to run:
 
 ```bash
-curl -s -X POST "$API_URL" \
+curl -s -X POST "$POST_API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-102",
     "channel":"chat",
     "message":"I hate your agent. I will kill you."
   }'
@@ -135,9 +137,7 @@ curl -s -X POST "$API_URL" \
 What to show:
 
 ```bash
-aws dynamodb get-item \
-  --table-name <InsightsTableName-from-stack-output> \
-  --key '{"complaintId":{"S":"cmp-demo-102"}}'
+curl -s "$API_BASE_URL/complaints/<complaintId>"
 ```
 
 Key teaching point:
@@ -151,10 +151,9 @@ What to say:
 What to run:
 
 ```bash
-curl -s -X POST "$API_URL" \
+curl -s -X POST "$POST_API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-103",
     "channel":"web",
     "message":"Your idiot staff leaked my passport number and national ID. I will kill him."
   }'
@@ -163,7 +162,7 @@ curl -s -X POST "$API_URL" \
 What to show:
 
 - the analyze log line with `guardrailStatus`
-- the DynamoDB item with `piiDetected=true`
+- the query response with `piiDetected=true`
 
 Key teaching point:
 guardrail-aware normalization can still produce structured output for downstream systems.
@@ -176,10 +175,9 @@ What to say:
 What to run:
 
 ```bash
-curl -s -X POST "$API_URL" \
+curl -s -X POST "$POST_API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-104",
     "channel":"web",
     "message":"My passport number and credit card details were visible in the complaint thread."
   }'
@@ -202,10 +200,9 @@ What to say:
 What to run:
 
 ```bash
-curl -s -X POST "$API_URL" \
+curl -s -X POST "$POST_API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-105",
     "channel":"web",
     "message":"My personal identification documents were exposed on your website and other users could view them."
   }'
@@ -227,10 +224,9 @@ What to say:
 What to run:
 
 ```bash
-curl -s -X POST "$API_URL" \
+curl -s -X POST "$POST_API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-106",
     "channel":"web",
     "message":"I really like one of your support agents, please ask her to call me at 202-555-0147."
   }'
@@ -253,10 +249,9 @@ What to say:
 What to run:
 
 ```bash
-curl -s -i -X POST "$API_URL" \
+curl -s -i -X POST "$POST_API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-199",
     "channel":"email"
   }'
 ```
@@ -292,11 +287,10 @@ Comparison table:
 | Scenario | Where it fails | API response | S3 raw complaint | DynamoDB insight | EventBridge downstream | Action stage | What you would see |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Invalid request | Ingest validation | `400 Bad Request` | No | No | No `ComplaintReceived` event | No | Clear validation error returned to caller |
-| Ingest infrastructure failure | Ingest after validation | `500 Failed to process complaint` | Maybe | No | No downstream progress if store or publish fails | No | Ingest logs show `Ingest processing failed` with `errorType` |
-| Forced analyzer failure | Analyze runtime | `202 Accepted` already returned | Yes | No | `ComplaintReceived` exists, `ComplaintAnalyzed` does not | No | Analyze logs show an unexpected failure |
-| Invalid AI output | Analyze validation/parsing | `202 Accepted` already returned | Yes | No | `ComplaintReceived` exists, `ComplaintAnalyzed` does not | No | Analyze logs show validation or parsing failure |
+| Ingest infrastructure failure | Ingest after validation | `500 Failed to process complaint` | Maybe | Maybe partial `RECEIVED` item if failure happens after initial write | No downstream progress if store or publish fails | No | Ingest logs show `Ingest processing failed` with `errorType` |
+| Forced analyzer failure | Analyze runtime | `202 Accepted` already returned | Yes | Item remains queryable, typically with `FAILED_ANALYSIS` | `ComplaintReceived` exists, `ComplaintAnalyzed` does not | No | Analyze logs show an unexpected failure |
+| Invalid AI output | Analyze validation/parsing | `202 Accepted` already returned | Yes | Item remains queryable, typically with `FAILED_ANALYSIS` | `ComplaintReceived` exists, `ComplaintAnalyzed` does not | No | Analyze logs show validation or parsing failure |
 | Guardrail intervention | Analyze, but recovered | `202 Accepted` already returned | Yes | Yes | Both events emitted | Yes | Insight is saved with guardrail metadata |
-| Duplicate complaint replay | Analyze dedupe check | `202 Accepted` at ingest | Yes | Existing item reused | Analyze skips duplicate completion | No new action | Logs show duplicate skip behavior |
 
 Suggested framing:
 
@@ -306,7 +300,7 @@ Suggested framing:
 
 ## Instructor Tips
 
-- use fresh `complaintId` values if you are repeating the same demo and want to avoid duplicate-skip behavior
+- copy the `complaintId` from the POST response and reuse it in lookup examples
 - keep one terminal dedicated to log tails and one for `curl`
 - if live Bedrock adds latency, call that out explicitly so participants do not think the app is stuck
 - if a live Bedrock demo is flaky, switch back to `mock` and keep momentum
@@ -315,8 +309,13 @@ Suggested framing:
 
 - the infrastructure is intentionally simple so participants can reason about it quickly
 - the analyzer validates AI output before trusting it
+- the model adapter is a natural extension point for showing how another model can reuse the same analysis contract
 - the action stage is simulated on purpose and is a natural extension point
 - most workshop cost comes from Bedrock, not the surrounding serverless components
+
+## Optional Model Swap Note
+
+If the group asks how to try another Bedrock Converse-compatible model, explain that the analyzer already passes `BEDROCK_MODEL_ID` into the shared Converse request. For this workshop, changing the `BedrockModelId` deploy parameter is enough as long as the model supports the same Converse request and response shape and can follow the same JSON-only prompt.
 
 ## Supporting Docs
 

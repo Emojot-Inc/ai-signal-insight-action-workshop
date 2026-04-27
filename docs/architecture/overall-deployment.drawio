@@ -17,13 +17,16 @@
           <mxGeometry height="660" width="1772" x="20" y="40" as="geometry" />
         </mxCell>
         <mxCell id="7" parent="5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4D6;strokeColor=#F78E04;fontColor=#232F3E;fontStyle=1;fontSize=13;align=left;spacingLeft=10;" value="Ingestion" vertex="1">
-          <mxGeometry height="180" width="330" x="76" y="70" as="geometry" />
+          <mxGeometry height="250" width="330" x="76" y="70" as="geometry" />
         </mxCell>
-        <mxCell id="8" parent="5" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#F78E04;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.api_gateway;" value="Amazon API Gateway&#xa;`POST /complaints`" vertex="1">
+        <mxCell id="8" parent="5" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#F78E04;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.api_gateway;" value="Amazon API Gateway&#xa;`POST /complaints`&#xa;`GET /complaints/{complaintId}`" vertex="1">
           <mxGeometry height="78" width="78" x="160" y="120" as="geometry" />
         </mxCell>
         <mxCell id="9" parent="5" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" value="AWS Lambda&#xa;IngestFunction" vertex="1">
           <mxGeometry height="78" width="78" x="300" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="60" parent="5" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" value="AWS Lambda&#xa;QueryFunction" vertex="1">
+          <mxGeometry height="78" width="78" x="300" y="220" as="geometry" />
         </mxCell>
         <mxCell id="10" parent="5" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCEBFA;strokeColor=#BC1356;fontColor=#232F3E;fontStyle=1;fontSize=13;align=left;spacingLeft=10;" value="Storage + Events" vertex="1">
           <mxGeometry height="240" width="470" x="566" y="60" as="geometry" />
@@ -103,6 +106,30 @@
             </Array>
           </mxGeometry>
         </mxCell>
+        <mxCell id="61" edge="1" parent="5" source="8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#232F3E;fontSize=11;endArrow=block;endFill=1;" target="60" value="Invoke">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="236" y="259" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="62" edge="1" parent="5" source="60" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E5BFF;fontSize=11;endArrow=block;endFill=1;" target="16" value="GetItem / status snapshot">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="392" y="337" />
+              <mxPoint x="392" y="392" />
+              <mxPoint x="1280" y="392" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="63" edge="1" parent="5" source="60" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#5D6D7E;fontSize=11;dashed=1;endArrow=block;endFill=1;" target="8" value="200 / 404">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="339" y="198" />
+              <mxPoint x="236" y="198" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
         <mxCell id="SsNfuI4sXHfDiCBtxdOQ-45" edge="1" parent="5" style="endArrow=classic;html=1;rounded=0;strokeColor=#BC1356;" target="14" value="">
           <mxGeometry height="50" relative="1" width="50" as="geometry">
             <mxPoint x="972" y="149" as="sourcePoint" />
@@ -151,8 +178,8 @@
         <mxCell id="22" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F8FA;strokeColor=#D5DBDB;fontColor=#232F3E;fontStyle=1;fontSize=13;align=left;spacingLeft=10;" value="" vertex="1">
           <mxGeometry height="250" width="230" x="2030" y="110" as="geometry" />
         </mxCell>
-        <mxCell id="23" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=12;fontColor=#232F3E;" value="1. Client submits complaint to API Gateway&#xa;2. Ingest Lambda stores raw payload in S3&#xa;3. Ingest publishes `ComplaintReceived`&#xa;4. Analyze Lambda reads S3 and calls Bedrock&#xa;5. Analysis is normalized into DynamoDB&#xa;6. Analyze publishes `ComplaintAnalyzed`&#xa;7. Action Lambda simulates escalation logic" vertex="1">
-          <mxGeometry height="190" width="190" x="2050" y="130" as="geometry" />
+        <mxCell id="23" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=12;fontColor=#232F3E;" value="1. Client submits complaint to API Gateway&#xa;2. Ingest Lambda generates ID, stores raw payload, and creates initial DynamoDB state&#xa;3. Ingest publishes `ComplaintReceived`&#xa;4. Analyze Lambda reads S3, calls Bedrock, and updates the complaint state&#xa;5. Analyze publishes `ComplaintAnalyzed`&#xa;6. Action Lambda persists simulated action outcome&#xa;7. Client queries `GET /complaints/{complaintId}` via Query Lambda" vertex="1">
+          <mxGeometry height="220" width="200" x="2050" y="130" as="geometry" />
         </mxCell>
         <mxCell id="24" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F8FA;strokeColor=#D5DBDB;fontColor=#232F3E;fontStyle=1;fontSize=13;align=left;spacingLeft=10;" value="Legend" vertex="1">
           <mxGeometry height="290" width="230" x="2030" y="396" as="geometry" />

@@ -3,9 +3,10 @@
 This repository is a small event-driven AWS workshop that turns a customer complaint into:
 
 1. a raw submission stored in S3
-2. a structured analysis produced by a Lambda function
-3. an insight record persisted in DynamoDB
+2. an immediate complaint state record persisted in DynamoDB
+3. a structured analysis produced by a Lambda function
 4. a simulated downstream action decision
+5. a queryable complaint snapshot returned by API
 
 It is designed to be easy to demo locally with AWS SAM and easy to deploy into AWS for a hands-on workshop.
 
@@ -15,6 +16,7 @@ It is designed to be easy to demo locally with AWS SAM and easy to deploy into A
 - how to separate ingest, analysis, and action responsibilities
 - how to use deterministic mock AI output for workshops
 - how to switch from mock mode to live Amazon Bedrock analysis
+- how a model adapter can isolate provider-specific model logic
 - how guardrails and validation affect downstream processing
 
 ## Architecture
@@ -22,6 +24,7 @@ It is designed to be easy to demo locally with AWS SAM and easy to deploy into A
 ```text
 POST /complaints
   -> IngestFunction
+  -> 202 Accepted with generated complaintId
   -> S3 raw complaint record
   -> EventBridge: ComplaintReceived
   -> AnalyzeFunction
@@ -30,9 +33,14 @@ POST /complaints
   -> EventBridge: ComplaintAnalyzed
   -> ActionFunction
   -> simulated escalation decision
+GET /complaints/{complaintId}
+  -> QueryFunction
+  -> DynamoDB complaint snapshot
 ```
 
 ![Overall deployment architecture](docs/architecture/overall-deployment-white-background.drawio.png)
+
+The diagram highlights the main event-driven write path. The new query path is the `GET /complaints/{complaintId}` flow described in the text above.
 
 ## Repository Map
 
@@ -44,12 +52,14 @@ POST /complaints
 ├── src/
 │   ├── ingest/
 │   ├── analyze/
-│   └── action/
+│   ├── action/
+│   └── query/
 ├── events/
 │   ├── ingest-api.json
 │   ├── ingest-api-sensitive.json
 │   ├── analyze-event.json
-│   └── action-event.json
+│   ├── action-event.json
+│   └── query-api.json
 ├── docs/
 │   ├── participant-guide.md
 │   ├── instructor-guide.md
@@ -89,12 +99,12 @@ sam local start-api
 In another terminal, send a complaint:
 
 ```bash
-API_URL="http://127.0.0.1:3000/complaints"
+API_BASE_URL="http://127.0.0.1:3000"
+POST_API_URL="$API_BASE_URL/complaints"
 
-curl -s -X POST "$API_URL" \
+curl -s -X POST "$POST_API_URL" \
   -H "Content-Type: application/json" \
   -d '{
-    "complaintId":"cmp-demo-101",
     "channel":"email",
     "message":"Your support team ignored my issue for three days and I still cannot access my account."
   }'
@@ -103,7 +113,13 @@ curl -s -X POST "$API_URL" \
 Expected response:
 
 ```json
-{"status":"accepted","complaintId":"cmp-demo-101"}
+{"status":"accepted","complaintId":"cmp-<uuid-v4>"}
+```
+
+Use the returned `complaintId` to query the complaint later:
+
+```bash
+curl -s "$API_BASE_URL/complaints/<complaintId>"
 ```
 
 ### Direct Function Invocations
@@ -115,6 +131,7 @@ sam local invoke IngestFunction --event events/ingest-api.json
 sam local invoke IngestFunction --event events/ingest-api-sensitive.json
 sam local invoke AnalyzeFunction --event events/analyze-event.json
 sam local invoke ActionFunction --event events/action-event.json
+sam local invoke QueryFunction --event events/query-api.json
 ```
 
 ## Deploy to AWS
@@ -144,7 +161,8 @@ aws cloudformation describe-stacks \
 Set the deployed API URL:
 
 ```bash
-API_URL="<your-api-endpoint>"
+API_BASE_URL="<your-api-base-url>"
+POST_API_URL="$API_BASE_URL/complaints"
 ```
 
 ## Deployment Profiles
@@ -177,10 +195,10 @@ The current default model ID is `global.anthropic.claude-haiku-4-5-20251001-v1:0
 
 ## What to Look For
 
-- `IngestFunction` validates the request, stores the raw payload, and publishes `ComplaintReceived`.
-- `AnalyzeFunction` loads the raw complaint, validates AI output, stores a normalized insight item, and publishes `ComplaintAnalyzed`.
-- `ActionFunction` applies simple escalation rules and logs a simulated action.
-- Duplicate complaint IDs are ignored after a successful completed analysis write.
+- `IngestFunction` validates the request, generates the complaint ID, stores the raw payload, creates the initial DynamoDB state item, and publishes `ComplaintReceived`.
+- `AnalyzeFunction` loads the raw complaint, validates AI output, updates the complaint state item to `ANALYZED`, and publishes `ComplaintAnalyzed`.
+- `ActionFunction` applies simple escalation rules, persists the simulated action outcome, and advances the complaint state item to `ACTIONED`.
+- `GET /complaints/{complaintId}` returns the current complaint snapshot from DynamoDB.
 
 ## Documentation Guide
 

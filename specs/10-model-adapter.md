@@ -21,3 +21,8 @@ Rules:
 - Do not implement OpenAI, Gemini, or other providers.
 - Do not implement full multi-model switching.
 - Keep Claude as the workshop model through Bedrock Converse.
+
+Optional extension:
+- A post-lab extension may change BEDROCK_MODEL_ID to another Bedrock Converse-compatible model.
+- The extension must keep the same internal analysis schema and must not change ingest, event, query, or action contracts.
+- Do not add adapter dispatch unless a new model requires different request fields, response extraction, prompt handling, or normalization.

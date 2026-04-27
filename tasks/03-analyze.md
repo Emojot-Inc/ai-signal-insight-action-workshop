@@ -9,7 +9,7 @@ Responsibilities:
 1. Read complaint from S3 using s3Bucket and s3Key from the event.
 2. Extract complaint message.
 3. Call analyze_message(message).
-4. Persist normalized result to DynamoDB.
+4. Update the existing DynamoDB complaint item with normalized analysis fields and `processingStatus=ANALYZED`.
 5. Publish ComplaintAnalyzed event to EventBridge.
 6. Emit structured JSON logs.
 
@@ -22,7 +22,7 @@ Model adapter:
 Validation:
 - Model output must be JSON.
 - Validate required fields and enum values.
-- If output is invalid, log failure and do not write successful insight.
+- If output is invalid, log failure and do not write a successful analyzed state.
 
 Do not:
 - Use InvokeModel directly.

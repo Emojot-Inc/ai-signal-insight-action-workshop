@@ -23,7 +23,7 @@ That is intentionally a rule-of-thumb number, not a billing guarantee.
 The stack in [template.yaml](/Users/ravindu-emojot/Documents/emojot/code/ai-signal-insight-action-workshop/template.yaml) includes:
 
 - API Gateway
-- three Lambda functions
+- four Lambda functions
 - one S3 bucket
 - one DynamoDB on-demand table
 - one EventBridge custom bus plus rules
@@ -62,6 +62,13 @@ At workshop scale:
 - idle resources are close to zero except for stored data and retained logs
 - Bedrock cost grows almost linearly with the number of complaint analyses
 
+With the complaint query flow added:
+
+- each complaint submission now adds a small extra DynamoDB write at ingest
+- each completed complaint adds a small extra DynamoDB write at action persistence
+- each `GET /complaints/{complaintId}` adds a small API Gateway, Lambda, and DynamoDB read cost
+- these are still usually negligible compared with live Bedrock inference cost
+
 That means your budget is mostly a question of:
 
 - how many complaints participants submit
@@ -94,6 +101,7 @@ For most workshop users, these are not the parts to worry about:
 - Lambda compute charges
 - EventBridge events
 - DynamoDB request charges
+- complaint query lookups through API Gateway and the query Lambda
 - S3 request and storage charges for the small workshop payloads
 - X-Ray at workshop scale
 

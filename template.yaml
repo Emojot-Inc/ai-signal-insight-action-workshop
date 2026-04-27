@@ -125,6 +125,8 @@ Resources:
       Policies:
         - S3WritePolicy:
             BucketName: !Ref RawComplaintsBucket
+        - DynamoDBWritePolicy:
+            TableName: !Ref InsightsTable
         - Statement:
             - Effect: Allow
               Action:
@@ -133,6 +135,7 @@ Resources:
       Environment:
         Variables:
           RAW_BUCKET_NAME: !Ref RawComplaintsBucket
+          INSIGHTS_TABLE_NAME: !Ref InsightsTable
           EVENTS_BUS_NAME: !Ref ComplaintEventsBus
       Events:
         SubmitComplaintApi:
@@ -141,6 +144,27 @@ Resources:
             RestApiId: !Ref ComplaintsApi
             Path: /complaints
             Method: post
+
+  QueryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-query"
+      CodeUri: src/query/
+      Handler: app.lambda_handler
+      Description: Reads complaint status by complaint ID from DynamoDB.
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref InsightsTable
+      Environment:
+        Variables:
+          INSIGHTS_TABLE_NAME: !Ref InsightsTable
+      Events:
+        QueryComplaintApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ComplaintsApi
+            Path: /complaints/{complaintId}
+            Method: get
 
   AnalyzeFunction:
     Type: AWS::Serverless::Function
@@ -200,8 +224,12 @@ Resources:
       CodeUri: src/action/
       Handler: app.lambda_handler
       Description: Simulates escalation action from analyzed insights.
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref InsightsTable
       Environment:
         Variables:
+          INSIGHTS_TABLE_NAME: !Ref InsightsTable
           ACTION_MODE: simulate
           RULE_URGENCY_HIGH: "true"
           RULE_NEGATIVE_COMPLIANCE: "true"
@@ -252,6 +280,10 @@ Resources:
       SourceArn: !GetAtt ComplaintAnalyzedRule.Arn
 
 Outputs:
+  ApiBaseUrl:
+    Description: API base URL for complaint submission and query
+    Value: !Sub "https://${ComplaintsApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+
   ApiUrl:
     Description: API endpoint URL for complaint submissions
     Value: !Sub "https://${ComplaintsApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/complaints"

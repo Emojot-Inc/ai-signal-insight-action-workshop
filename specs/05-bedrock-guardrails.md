@@ -36,7 +36,7 @@ Converse requirements:
 - Use guardrailConfig when guardrail env vars are provided.
 - Extract text from response["output"]["message"]["content"].
 - Parse only valid JSON from the model response.
-- Validate all fields before writing to DynamoDB.
+- Validate all fields before updating the DynamoDB complaint item with analyzed fields.
 
 Guardrails intent:
 - Content filtering for harmful/abusive language

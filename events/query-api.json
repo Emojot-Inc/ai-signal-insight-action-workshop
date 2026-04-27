@@ -1,0 +1,9 @@
+{
+  "resource": "/complaints/{complaintId}",
+  "path": "/complaints/cmp-001",
+  "httpMethod": "GET",
+  "pathParameters": {
+    "complaintId": "cmp-001"
+  },
+  "isBase64Encoded": false
+}

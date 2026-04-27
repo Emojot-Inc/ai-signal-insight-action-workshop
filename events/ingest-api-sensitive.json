@@ -5,6 +5,6 @@
   "headers": {
     "Content-Type": "application/json"
   },
-  "body": "{\"complaintId\":\"cmp-local-002\",\"channel\":\"chat\",\"message\":\"My passport number and national ID details were exposed in your support thread.\"}",
+  "body": "{\"channel\":\"chat\",\"message\":\"My passport number and national ID details were exposed in your support thread.\"}",
   "isBase64Encoded": false
 }

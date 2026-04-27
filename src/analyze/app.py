@@ -495,6 +495,29 @@ def get_existing_insight_item(complaint_id):
     return response.get("Item")
 
 
+def update_insight_item(item):
+    table_name = os.getenv("INSIGHTS_TABLE_NAME", "")
+    table = dynamodb_resource.Table(table_name)
+    table.put_item(
+        Item=item,
+        ConditionExpression="attribute_exists(complaintId)",
+    )
+
+
+def update_processing_status(complaint_id, processing_status):
+    if not complaint_id:
+        return
+
+    table_name = os.getenv("INSIGHTS_TABLE_NAME", "")
+    table = dynamodb_resource.Table(table_name)
+    table.update_item(
+        Key={"complaintId": complaint_id},
+        UpdateExpression="SET processingStatus = :processingStatus",
+        ExpressionAttributeValues={":processingStatus": processing_status},
+        ConditionExpression="attribute_exists(complaintId)",
+    )
+
+
 def emit_complaint_analyzed_event(detail):
     bus_name = os.getenv("EVENTS_BUS_NAME", "")
     response = events_client.put_events(
@@ -527,7 +550,7 @@ def build_insight_item(complaint_id, submitted_at, complaint, analysis, s3_key):
         "recommendedAction": analysis["recommendedAction"],
         "guardrailStatus": analysis.get("guardrailStatus", "UNKNOWN"),
         "guardrailTracePresent": bool(analysis.get("guardrailTracePresent", False)),
-        "processingStatus": "COMPLETED",
+        "processingStatus": "ANALYZED",
         "rawS3Key": s3_key,
     }
     if analysis.get("bedrockStopReason"):
@@ -569,12 +592,16 @@ def lambda_handler(event, _context):
         validate_complaint_payload(complaint)
 
         existing_item = get_existing_insight_item(complaint_id)
-        if existing_item and existing_item.get("processingStatus") == "COMPLETED":
+        if not existing_item:
+            raise ValueError("Complaint state item was not found before analysis")
+
+        if existing_item.get("processingStatus") in {"ANALYZED", "ACTIONED"}:
             log(
                 "INFO",
                 "Analyze skipped duplicate completed complaint",
                 complaintId=complaint_id,
                 rawS3Key=existing_item.get("rawS3Key", ""),
+                processingStatus=existing_item.get("processingStatus", ""),
             )
             return {
                 "status": "duplicate",
@@ -585,15 +612,18 @@ def lambda_handler(event, _context):
         analysis = analyze_message(complaint["message"])
 
         processed_at = datetime.now(timezone.utc).isoformat()
-        item = build_insight_item(
+        item = {
+            **existing_item,
+            **build_insight_item(
             complaint_id=complaint_id,
             submitted_at=submitted_at,
             complaint=complaint,
             analysis=analysis,
             s3_key=s3_key,
-        )
+            ),
+        }
         try:
-            write_insight_item(item)
+            update_insight_item(item)
         except ClientError as exc:
             if exc.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
                 raise
@@ -637,6 +667,14 @@ def lambda_handler(event, _context):
             errorType=type(exc).__name__,
             error=str(exc),
         )
+        try:
+            update_processing_status(complaint_id, "FAILED_ANALYSIS")
+        except (ClientError, BotoCoreError):
+            log(
+                "WARNING",
+                "Failed to persist analyze failure status",
+                complaintId=complaint_id,
+            )
         raise
     except ValueError as exc:
         log(
@@ -646,6 +684,14 @@ def lambda_handler(event, _context):
             errorType=type(exc).__name__,
             error=str(exc),
         )
+        try:
+            update_processing_status(complaint_id, "FAILED_ANALYSIS")
+        except (ClientError, BotoCoreError):
+            log(
+                "WARNING",
+                "Failed to persist analyze failure status",
+                complaintId=complaint_id,
+            )
         raise
     except Exception as exc:
         log(
@@ -655,4 +701,12 @@ def lambda_handler(event, _context):
             errorType=type(exc).__name__,
             error=str(exc),
         )
+        try:
+            update_processing_status(complaint_id, "FAILED_ANALYSIS")
+        except (ClientError, BotoCoreError):
+            log(
+                "WARNING",
+                "Failed to persist analyze failure status",
+                complaintId=complaint_id,
+            )
         raise
