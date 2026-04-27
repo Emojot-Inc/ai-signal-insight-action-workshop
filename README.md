@@ -207,6 +207,11 @@ The current default model ID is `global.anthropic.claude-haiku-4-5-20251001-v1:0
 - Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
 - Cost and cleanup notes: [docs/costing.md](docs/costing.md)
 
+
+## Costing
+
+A detailed overview on workshop AWS resource costing can be accessed in [docs/costing.md](docs/costing.md).
+
 ## Cleanup
 
 When you are done, delete the workshop stack so costs stop accumulating:
